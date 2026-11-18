@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>Senin İçin 💌 Dünya Prensesler Günü</title>
+<meta name="description" content="Dünya Prensesler Günü'ne özel bir mektup." />
+<meta name="theme-color" content="#030203" />
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🌹</text></svg>" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@700&family=Dancing+Script:wght@600&display=swap" rel="stylesheet" />
+<style>
+  :root { --bg: #030203; }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; background: var(--bg); overflow: hidden; }
+  body {
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    color: #f6dbe6; font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+    -webkit-tap-highlight-color: transparent; user-select: none;
+  }
+  #stage { position: relative; display: flex; flex-direction: column; align-items: center; }
+  canvas { display: block; }
+  #caption {
+    height: 64px; display: flex; align-items: center; justify-content: center; text-align: center;
+    font-family: "Dancing Script", cursive; font-size: clamp(22px, 4.4vw, 34px);
+    color: #ffd6e4; text-shadow: 0 0 18px rgba(255, 90, 140, .55), 0 0 4px rgba(255, 200, 220, .6);
+    opacity: 0; transform: translateY(8px); transition: opacity 2.2s ease, transform 2.2s ease;
+    padding: 0 12px;
+  }
+  #caption.show { opacity: 1; transform: none; }
+  #loader {
+    position: fixed; inset: 0; display: flex; flex-direction: column; gap: 18px;
+    align-items: center; justify-content: center; background: var(--bg); z-index: 5;
+    transition: opacity .8s ease;
+  }
+  #loader.hide { opacity: 0; pointer-events: none; }
+  #loader .heart { font-size: 46px; animation: beat 1.1s ease-in-out infinite; }
+  #loader p { font-size: 14px; letter-spacing: .08em; color: #c99aac; }
+  #loader.err p { color: #ff8a8a; }
+  @keyframes beat { 0%,100% { transform: scale(1); } 25% { transform: scale(1.18); } 45% { transform: scale(.96); } }
+  #replay {
+    position: fixed; right: 14px; bottom: calc(14px + env(safe-area-inset-bottom)); z-index: 4;
+    background: rgba(255,255,255,.06); color: #e9c3d2; border: 1px solid rgba(255,255,255,.12);
+    border-radius: 999px; padding: 8px 14px; font-size: 13px; cursor: pointer;
+    opacity: 0; transition: opacity .6s ease, background .2s;
+  }
+  #replay.show { opacity: .8; }
+  #replay:hover { background: rgba(255,255,255,.12); opacity: 1; }
+</style>
+</head>
+<body>
+  <div id="loader"><div class="heart">💌</div><p>Mektubun hazırlanıyor…</p></div>
+  <div id="stage">
+    <canvas id="c"></canvas>
+    <div id="caption"></div>
+  </div>
+  <button id="replay" type="button" aria-label="Tekrar oynat">↻ Tekrar</button>
+
+<script src="https://cdn.jsdelivr.net/pyodide/v0.27.7/full/pyodide.js"></script>
+<script>
+// ======== Ayarlar (istediğin gibi değiştir) ========
+const MESAJ = "Dünya Prensesler Günün kutlu olsun 👑";
+const MESAJ_SANIYE = 11.5;   // gül tamamlandıktan sonra mesajın çıkacağı an
+// ===================================================
+
+const FONT_PX = 11;                       // tkinter 8pt ≈ 11px
+const FONT = `700 ${FONT_PX}px "JetBrains Mono", "DejaVu Sans Mono", Consolas, "Courier New", monospace`;
+const CAPTION_H = 64;
+
+const cv = document.getElementById("c");
+const ctx = cv.getContext("2d");
+const loader = document.getElementById("loader");
+const caption = document.getElementById("caption");
+const replay = document.getElementById("replay");
+caption.textContent = MESAJ;
+
+// --- Python'un çizdiği hücreler ---
+let W = 600, H = 600, BG = "#030203";
+const X = [], Y = [], T = [], F = [];
+let dirty = false, startedAt = null;
+
+window.webtkApply = (s) => {
+  const ops = s.split("\x1e");
+  for (let k = 0; k < ops.length; k++) {
+    const f = ops[k].split("\x1f");
+    const op = f[0];
+    if (op === "u") {
+      const i = +f[1]; T[i] = f[2]; if (f[3]) F[i] = f[3];
+    } else if (op === "c") {
+      const i = +f[1]; X[i] = +f[2]; Y[i] = +f[3]; T[i] = f[4]; F[i] = f[5];
+    } else if (op === "b") {
+      W = +f[1]; H = +f[2]; BG = f[3];
+      document.documentElement.style.setProperty("--bg", BG);
+      fit();
+    }
+  }
+  dirty = true;
+  if (startedAt === null) { startedAt = performance.now(); onStart(); }
+};
+
+let scale = 1;
+function fit() {
+  const availW = window.innerWidth - 16;
+  const availH = window.innerHeight - CAPTION_H - 16;
+  scale = Math.max(0.3, Math.min(availW / W, availH / H));
+  const dpr = Math.min(window.devicePixelRatio || 1, 2.5);
+  cv.style.width = Math.round(W * scale) + "px";
+  cv.style.height = Math.round(H * scale) + "px";
+  cv.width = Math.round(W * scale * dpr);
+  cv.height = Math.round(H * scale * dpr);
+  ctx.setTransform(scale * dpr, 0, 0, scale * dpr, 0, 0);
+  ctx.font = FONT;
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  dirty = true;
+}
+window.addEventListener("resize", fit);
+
+function draw() {
+  if (dirty) {
+    dirty = false;
+    ctx.fillStyle = BG;
+    ctx.fillRect(0, 0, W, H);
+    let cur = "";
+    for (let i = 1; i < T.length; i++) {
+      const t = T[i];
+      if (t === undefined || t === " ") continue;
+      const f = F[i];
+      if (f !== cur) { ctx.fillStyle = f; cur = f; }
+      ctx.fillText(t, X[i], Y[i]);
+    }
+  }
+  if (startedAt !== null) {
+    const el = (performance.now() - startedAt) / 1000;
+    caption.classList.toggle("show", el > MESAJ_SANIYE);
+    replay.classList.toggle("show", el > MESAJ_SANIYE + 1.5);
+  }
+  requestAnimationFrame(draw);
+}
+
+function onStart() {
+  loader.classList.add("hide");
+  setTimeout(() => loader.remove(), 900);
+}
+
+let pyodide = null;
+function restart() {
+  if (!pyodide) return;
+  pyodide.globals.get("webtk_fire")("r");
+  startedAt = performance.now();
+  caption.classList.remove("show");
+  replay.classList.remove("show");
+}
+replay.addEventListener("click", (e) => { e.stopPropagation(); restart(); });
+window.addEventListener("keydown", (e) => { if (e.key === "r" || e.key === "R") restart(); });
+
+async function main() {
+  try {
+    await document.fonts.load(FONT).catch(() => {});
+    ctx.font = FONT;
+    const CW = Math.max(1, Math.ceil(ctx.measureText("M").width));
+    const CH = Math.round(FONT_PX * 1.2);
+    // Yüksek bir değer vererek Python tarafında en detaylı ızgarayı (46 satır) seçtiriyoruz;
+    // sonra canvas ekrana sığacak şekilde ölçekleniyor.
+    window.WEBTK = { CW, CH, screenH: 1100, screenW: 1920 };
+
+    const [shim, letter] = await Promise.all([
+      fetch("py/webtk.py").then(r => { if (!r.ok) throw new Error("webtk.py"); return r.text(); }),
+      fetch("py/letter.py").then(r => { if (!r.ok) throw new Error("letter.py"); return r.text(); }),
+      (async () => { pyodide = await loadPyodide(); })(),
+    ]);
+    pyodide.FS.writeFile("/home/pyodide/webtk.py", shim);
+    pyodide.runPython("import webtk\nwebtk_fire = webtk.fire_key");
+    requestAnimationFrame(draw);
+    pyodide.runPython(letter);   // orijinal letter.py, olduğu gibi
+  } catch (err) {
+    console.error(err);
+    loader.classList.add("err");
+    loader.querySelector("p").textContent = "Yüklenemedi, sayfayı yenilemeyi dene 💔";
+  }
+}
+main();
+</script>
+</body>
+</html>
